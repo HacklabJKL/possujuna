@@ -87,29 +87,31 @@ int main( int argc, char *argv[])
 	check_key_error(error);
 	gboolean rs485 = g_key_file_get_boolean(map, "serial", "rs485", &error);
 	check_key_error(error);
-	
+
+	// Prepare and connect MODBUS
 	ctx = modbus_new_rtu(uart_path, uart_baud, 'N', 8, 1);
-	if (rs485) {
-		modbus_rtu_set_serial_mode(ctx, MODBUS_RTU_RS485);
-		modbus_rtu_set_rts(ctx, MODBUS_RTU_RTS_DOWN);
-	}
-
 	if (ctx == NULL) {
-		perror("Unable to create the libmodbus context\n");
-		return -1;
+		err(5, "Unable to create the libmodbus context");
 	}
 
-	ret = modbus_set_slave(ctx, 1);
-	if(ret < 0){
-		perror("modbus_set_slave error\n");
-		return -1;
-	}
-	ret = modbus_connect(ctx);
-	if(ret < 0){
-		perror("modbus_connect error\n");
-		return -1;
+	if (modbus_connect(ctx)){
+		err(5, "Unable to open serial port");
 	}
 
+	if (rs485) {
+		if (modbus_rtu_set_serial_mode(ctx, MODBUS_RTU_RS485)) {
+			err(5, "Unable to set RS485 mode");
+		}
+		if (modbus_rtu_set_rts(ctx, MODBUS_RTU_RTS_DOWN)) {
+			err(5, "Unable to set RS485 RTS setting");
+		}
+	}
+
+	if (modbus_set_slave(ctx, 2)) {
+		err(5, "Unable to set slave");
+	}
+
+	// Ready to communicate.
 	for(;;){
 		ret = modbus_read_input_registers(ctx, 0x3104, NB_REGS, dest);
 		if(ret < 0){
