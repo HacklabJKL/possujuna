@@ -1,6 +1,12 @@
 # Possujuna
 Modbus to PostgreSQL data bridge in C
 
+## Requirements
+
+```
+sudo apt install libpq-dev libmodbus-dev libczmq-dev
+```
+
 ## Building
 
 It uses CMake, so pretty standard. A very common practice is to use a

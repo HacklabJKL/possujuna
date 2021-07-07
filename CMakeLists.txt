@@ -10,13 +10,15 @@ find_package(PkgConfig REQUIRED)
 
 # these calls create special `PkgConfig::<MODULE>` variables
 pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
+pkg_check_modules(ZMQ REQUIRED IMPORTED_TARGET libczmq)
 pkg_check_modules(MODBUS REQUIRED IMPORTED_TARGET libmodbus)
 pkg_check_modules(PQ REQUIRED IMPORTED_TARGET libpq)
 
 add_compile_options(
     -std=gnu17 # C17 standard
-    -O2 # optimize
+    -O0 # optimize
     -Wall # enable warnings
+    -g
 )
 
 file(GLOB SRC_FILES "src/*.c") # Load all files in src folder
@@ -25,6 +27,7 @@ add_executable(possujuna ${SRC_FILES})
 
 target_link_libraries(possujuna PUBLIC
     PkgConfig::GLIB
+    PkgConfig::ZMQ
     PkgConfig::MODBUS
     PkgConfig::PQ
 )
