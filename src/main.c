@@ -9,38 +9,9 @@
 #include <sys/ioctl.h>
 #include <linux/serial.h>
 #include <asm/ioctls.h>
+#include "config.h"
 
 #define NB_REGS 2
-
-// Prototypes
-static void check_key_error(GError *error);
-
-// Command line option parser
-static gchar *conf_file = NULL;
-static GOptionEntry entries[] =
-{
-	{ "conf", 'c', 0, G_OPTION_ARG_FILENAME, &conf_file, "Configuration file", "FILE"},
-	{ NULL }
-};
-
-// Terminate program if GLib error detected
-static void check_key_error(GError *error)
-{
-	// If ok, don't do anything
-	if (error == NULL) return;
-	
-	if (!g_error_matches(error, G_KEY_FILE_ERROR, G_KEY_FILE_ERROR_KEY_NOT_FOUND))
-	{
-		errx(4, "Key not found in configuration: %s", error->message);
-	}
-
-	if (!g_error_matches(error, G_KEY_FILE_ERROR, G_KEY_FILE_ERROR_INVALID_VALUE))
-	{
-		errx(4, "Key data type is invalid in configuration: %s", error->message);
-	}
-
-	errx(4, "GLib error while reading configuration");
-}
 
 int main( int argc, char *argv[])
 {
@@ -52,41 +23,18 @@ int main( int argc, char *argv[])
 	modbus_t *ctx;
 	uint16_t dest [NB_REGS];
 
-	{
-		GError *error = NULL;
-		GOptionContext *context;
-	
-		context = g_option_context_new("- Reads MODBUS and writes database");
-		g_option_context_add_main_entries(context, entries, NULL);
-		if (!g_option_context_parse(context, &argc, &argv, &error))
-		{
-			errx(1, "option parsing failed: %s", error->message);
-		}
-		
-		if (conf_file == NULL) {
-			errx(2, "Option --conf is mandatory. Try '%s --help'", argv[0]);
-		}
-	}
-	
-	{
-		g_autoptr(GError) error = NULL;
-		if (!g_key_file_load_from_file(map, conf_file, G_KEY_FILE_NONE, &error))
-		{
-			if (!g_error_matches(error, G_FILE_ERROR, G_FILE_ERROR_NOENT)) {
-				errx(3, "Error loading key file: %s", error->message);
-			}
-			err(3, "Unable to read configuration");
-		}
-	}
+	// Parse command line and config. If anything fails, the
+	// program is terminated.
+	config_parse_all(map, &argc, &argv);
 
-	// Serial port settings
+	// Serial port settings.
 	g_autoptr(GError) error = NULL;
 	g_autofree gchar *uart_path = g_key_file_get_string(map, "serial", "port", &error);
-	check_key_error(error);
+	config_check_key(error);
 	gint uart_baud = g_key_file_get_integer(map, "serial", "baud", &error);
-	check_key_error(error);
+	config_check_key(error);
 	gboolean rs485 = g_key_file_get_boolean(map, "serial", "rs485", &error);
-	check_key_error(error);
+	config_check_key(error);
 
 	// Prepare and connect MODBUS
 	ctx = modbus_new_rtu(uart_path, uart_baud, 'N', 8, 1);
