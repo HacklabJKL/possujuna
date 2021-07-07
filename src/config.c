@@ -31,9 +31,7 @@ void config_check_key(GError *error)
 void config_parse_all(GKeyFile *map, gint *argc, gchar ***argv)
 {
 	g_autoptr(GError) error = NULL;
-	GOptionContext *context;
-	
-	context = g_option_context_new("- Reads MODBUS and writes database");
+	g_autoptr(GOptionContext) context = g_option_context_new("- Reads MODBUS and writes database");
 	g_option_context_add_main_entries(context, entries, NULL);
 	if (!g_option_context_parse(context, argc, argv, &error))
 	{
