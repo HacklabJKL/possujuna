@@ -11,8 +11,6 @@
 #include <asm/ioctls.h>
 
 #define NB_REGS 2
-#define UART_PATH "/dev/ttyS0"
-#define BAUDRATE 115200
 
 // Prototypes
 static void check_key_error(GError *error);
@@ -81,9 +79,20 @@ int main( int argc, char *argv[])
 		}
 	}
 
-	ctx = modbus_new_rtu(UART_PATH, BAUDRATE, 'N', 8, 1);
-	modbus_rtu_set_serial_mode(ctx, MODBUS_RTU_RS485);
-	modbus_rtu_set_rts(ctx, MODBUS_RTU_RTS_DOWN);
+	// Serial port settings
+	g_autoptr(GError) error = NULL;
+	g_autofree gchar *uart_path = g_key_file_get_string(map, "serial", "port", &error);
+	check_key_error(error);
+	gint uart_baud = g_key_file_get_integer(map, "serial", "baud", &error);
+	check_key_error(error);
+	gboolean rs485 = g_key_file_get_boolean(map, "serial", "rs485", &error);
+	check_key_error(error);
+	
+	ctx = modbus_new_rtu(uart_path, uart_baud, 'N', 8, 1);
+	if (rs485) {
+		modbus_rtu_set_serial_mode(ctx, MODBUS_RTU_RS485);
+		modbus_rtu_set_rts(ctx, MODBUS_RTU_RTS_DOWN);
+	}
 
 	if (ctx == NULL) {
 		perror("Unable to create the libmodbus context\n");

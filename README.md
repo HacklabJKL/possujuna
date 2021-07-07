@@ -18,6 +18,15 @@ And then just:
 make
 ```
 
+## Usage
+
+Make a copy of `example.conf` and adapt it to your needs. Then start
+the program by running:
+
+```sh
+./possujuna -c CONFIG_FILE
+```
+
 ## License
 
 This program is free software: you can redistribute it and/or modify
