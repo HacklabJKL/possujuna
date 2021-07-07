@@ -10,6 +10,7 @@
 #include <linux/serial.h>
 #include <asm/ioctls.h>
 #include "config.h"
+#include "bustools.h"
 
 #define NB_REGS 2
 
@@ -20,7 +21,6 @@ int main( int argc, char *argv[])
 	int cumulative_errors = 0;
 	int read_counter = 0;
 	int ret;
-	modbus_t *ctx;
 	uint16_t dest [NB_REGS];
 
 	// Parse command line and config. If anything fails, the
@@ -28,32 +28,7 @@ int main( int argc, char *argv[])
 	config_parse_all(map, &argc, &argv);
 
 	// Serial port settings.
-	g_autoptr(GError) error = NULL;
-	g_autofree gchar *uart_path = g_key_file_get_string(map, "serial", "port", &error);
-	config_check_key(error);
-	gint uart_baud = g_key_file_get_integer(map, "serial", "baud", &error);
-	config_check_key(error);
-	gboolean rs485 = g_key_file_get_boolean(map, "serial", "rs485", &error);
-	config_check_key(error);
-
-	// Prepare and connect MODBUS
-	ctx = modbus_new_rtu(uart_path, uart_baud, 'N', 8, 1);
-	if (ctx == NULL) {
-		err(5, "Unable to create the libmodbus context");
-	}
-
-	if (modbus_connect(ctx)){
-		err(5, "Unable to open serial port");
-	}
-
-	if (rs485) {
-		if (modbus_rtu_set_serial_mode(ctx, MODBUS_RTU_RS485)) {
-			err(5, "Unable to set RS485 mode");
-		}
-		if (modbus_rtu_set_rts(ctx, MODBUS_RTU_RTS_DOWN)) {
-			err(5, "Unable to set RS485 RTS setting");
-		}
-	}
+	modbus_t *ctx = bustools_initialize(map);
 
 	if (modbus_set_slave(ctx, 2)) {
 		err(5, "Unable to set slave");
