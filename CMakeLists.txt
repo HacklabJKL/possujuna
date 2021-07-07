@@ -1,3 +1,5 @@
+# -*- mode: cmake; cmake-tab-width: 4 -*-
+
 # Just reduce this version if needed and send me a patch if it
 # works. This is just the version I have.
 cmake_minimum_required(VERSION 3.16)
@@ -21,5 +23,6 @@ file(GLOB SRC_FILES "src/*.c") # Load all files in src folder
 add_executable(possujuna ${SRC_FILES})
 
 target_link_libraries(possujuna PUBLIC
-        PkgConfig::MODBUS
-        PkgConfig::PQ)
+    PkgConfig::MODBUS
+    PkgConfig::PQ
+)
