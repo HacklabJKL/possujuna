@@ -3,17 +3,17 @@
 #include <err.h>
 #include "config.h"
 
-modbus_t *bustools_initialize(GKeyFile *map)
+modbus_t *bustools_initialize(GKeyFile *map, gchar *group)
 {
 	modbus_t *ctx;
 
 	// Get serial parameters from the configuration file
 	g_autoptr(GError) error = NULL;
-	g_autofree gchar *uart_path = g_key_file_get_string(map, "serial", "port", &error);
+	g_autofree gchar *uart_path = g_key_file_get_string(map, group, "port", &error);
 	config_check_key(error);
-	gint uart_baud = g_key_file_get_integer(map, "serial", "baud", &error);
+	gint uart_baud = g_key_file_get_integer(map, group, "baud", &error);
 	config_check_key(error);
-	gboolean rs485 = g_key_file_get_boolean(map, "serial", "rs485", &error);
+	gboolean rs485 = g_key_file_get_boolean(map, group, "rs485", &error);
 	config_check_key(error);
 
 	// Prepare and connect MODBUS
@@ -22,7 +22,7 @@ modbus_t *bustools_initialize(GKeyFile *map)
 		err(5, "Unable to create the libmodbus context");
 	}
 
-	if (modbus_connect(ctx)){
+	if (modbus_connect(ctx)) {
 		err(5, "Unable to open serial port");
 	}
 

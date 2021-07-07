@@ -28,7 +28,7 @@ int main( int argc, char *argv[])
 	config_parse_all(map, &argc, &argv);
 
 	// Serial port settings.
-	modbus_t *ctx = bustools_initialize(map);
+	modbus_t *ctx = bustools_initialize(map, "serial");
 
 	if (modbus_set_slave(ctx, 2)) {
 		err(5, "Unable to set slave");
