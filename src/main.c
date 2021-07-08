@@ -30,13 +30,18 @@ typedef struct {
 
 static bool do_zmq_magic(zmq_state_t *state, int left);
 static bool do_modbus_magic(modbus_state_t *state);
+static void zmq_state_free(zmq_state_t *state);
+static void modbus_state_free(modbus_state_t *state);
+
+G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(zmq_state_t, zmq_state_free);
+G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(modbus_state_t, modbus_state_free);
 
 static const int query_delay = 1000;
 
 int main( int argc, char *argv[])
 {
 	g_autoptr(GKeyFile) map = g_key_file_new();
-	zmq_state_t zmq_state;
+	g_auto(zmq_state_t) zmq_state;
 
 	// Parse command line and config. If anything fails, the
 	// program is terminated.
@@ -56,7 +61,7 @@ int main( int argc, char *argv[])
 	}
 	
 	// Serial port settings.
-	modbus_state_t modbus_state = {NULL, 0, 0, 0};
+	g_auto(modbus_state_t) modbus_state = {NULL, 0, 0, 0};
 	modbus_state.ctx = bustools_initialize(map, "serial");
 
 	if (modbus_set_slave(modbus_state.ctx, 2)) {
@@ -82,7 +87,7 @@ int main( int argc, char *argv[])
 
 			// Call ZMQ part with the timeout value.
 			if (do_zmq_magic(&zmq_state, left) == false) {
-				goto fail;
+				return 10;
 			}
 		}
 
@@ -90,17 +95,9 @@ int main( int argc, char *argv[])
 		printf("Back to routine modbus\n");
 
 		if ( do_modbus_magic(&modbus_state) == false) {
-			goto fail;
+			return 10;
 		}
 	}
-
-fail:
-	zpoller_destroy(&zmq_state.poller);
-	zsock_destroy(&zmq_state.pull);
-
-	modbus_close(modbus_state.ctx);
-	modbus_free(modbus_state.ctx);
-
 }
 
 static bool do_zmq_magic(zmq_state_t *state, int left)
@@ -126,6 +123,12 @@ static bool do_zmq_magic(zmq_state_t *state, int left)
 	return true;
 }
 
+static void zmq_state_free(zmq_state_t *state)
+{
+	zpoller_destroy(&state->poller);
+	zsock_destroy(&state->pull);
+}
+
 static bool do_modbus_magic(modbus_state_t *state)
 {
 	uint16_t dest[NB_REGS];
@@ -149,4 +152,10 @@ static bool do_modbus_magic(modbus_state_t *state)
 	printf("Battery Voltage = %d\n", dest[0]);
 	printf("Battery Charging current = %d\n", dest[1]);
 	return true;
+}
+
+static void modbus_state_free(modbus_state_t *state)
+{
+	modbus_close(state->ctx);
+	modbus_free(state->ctx);
 }
