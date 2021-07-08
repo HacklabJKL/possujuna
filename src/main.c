@@ -12,7 +12,7 @@
 #include <asm/ioctls.h>
 #include <regex.h>
 #include "config.h"
-#include "bustools.h"
+#include "modbus_state.h"
 #include "time.h"
 
 #define NB_REGS 2
@@ -23,21 +23,12 @@ typedef struct {
 	regex_t re_relay;
 } zmq_state_t;
 
-typedef struct {
-	modbus_t *ctx;
-	int n_errors;
-	int cumulative_errors;
-	int read_counter;
-} modbus_state_t;
-
 static zmq_state_t zmq_state_init(GKeyFile *map);
 static bool do_zmq_magic(zmq_state_t *state, int left);
 static bool do_modbus_magic(modbus_state_t *state);
 static void zmq_state_free(zmq_state_t *state);
-static void modbus_state_free(modbus_state_t *state);
 
 G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(zmq_state_t, zmq_state_free);
-G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(modbus_state_t, modbus_state_free);
 
 static const int query_delay = 1000;
 
@@ -53,8 +44,7 @@ int main( int argc, char *argv[])
 	g_auto(zmq_state_t) zmq_state = zmq_state_init(map);
 	
 	// Initialize MODBUS handler.
-	g_auto(modbus_state_t) modbus_state = {NULL, 0, 0, 0};
-	modbus_state.ctx = bustools_initialize(map, "serial");
+	g_auto(modbus_state_t) modbus_state = modbus_state_init(map);
 
 	if (modbus_set_slave(modbus_state.ctx, 2)) {
 		err(5, "Unable to set slave");
@@ -83,7 +73,6 @@ int main( int argc, char *argv[])
 			}
 		}
 
-		// Scheduled
 		printf("Back to routine modbus\n");
 
 		if ( do_modbus_magic(&modbus_state) == false) {
@@ -180,10 +169,4 @@ static bool do_modbus_magic(modbus_state_t *state)
 	printf("Battery Voltage = %d\n", dest[0]);
 	printf("Battery Charging current = %d\n", dest[1]);
 	return true;
-}
-
-static void modbus_state_free(modbus_state_t *state)
-{
-	modbus_close(state->ctx);
-	modbus_free(state->ctx);
 }
