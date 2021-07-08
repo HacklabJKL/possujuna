@@ -30,6 +30,7 @@ typedef struct {
 	int read_counter;
 } modbus_state_t;
 
+static zmq_state_t zmq_state_init(GKeyFile *map);
 static bool do_zmq_magic(zmq_state_t *state, int left);
 static bool do_modbus_magic(modbus_state_t *state);
 static void zmq_state_free(zmq_state_t *state);
@@ -43,34 +44,15 @@ static const int query_delay = 1000;
 int main( int argc, char *argv[])
 {
 	g_autoptr(GKeyFile) map = g_key_file_new();
-	g_auto(zmq_state_t) zmq_state;
 
 	// Parse command line and config. If anything fails, the
 	// program is terminated.
 	config_parse_all(map, &argc, &argv);
 
 	// Initialize message queue
-	{
-		g_autoptr(GError) error = NULL;
-		g_autofree gchar *path = g_key_file_get_string(map, "zmq", "socket", &error);
-		config_check_key(error);
-		zmq_state.pull = zsock_new_pull(path);
-		if (zmq_state.pull == NULL) {
-			err(7,"Unable to create ZMQ pull");
-		}
-
-		// Create poller from given puller
-		zmq_state.poller = zpoller_new(zmq_state.pull, NULL);
-		if (zmq_state.poller == NULL) {
-			err(7,"Unable to creat ZMQ poller");
-		}
-
-		if (regcomp(&zmq_state.re_relay, "^RELAY ([1-4]) (ON|OFF)$", REG_EXTENDED | REG_ICASE)) {
-			errx(1, "Unable to compile regex");
-		}
-	}
+	g_auto(zmq_state_t) zmq_state = zmq_state_init(map);
 	
-	// Serial port settings.
+	// Initialize MODBUS handler.
 	g_auto(modbus_state_t) modbus_state = {NULL, 0, 0, 0};
 	modbus_state.ctx = bustools_initialize(map, "serial");
 
@@ -80,7 +62,7 @@ int main( int argc, char *argv[])
 
 	struct timespec loop_start = time_get_monotonic();
 	int target = 0;
-	
+
 	// Ready to communicate.
 	while (true) {
 		// Be punctual. Try to be at do_modbus_magic() every
@@ -108,6 +90,30 @@ int main( int argc, char *argv[])
 			return 10;
 		}
 	}
+}
+
+static zmq_state_t zmq_state_init(GKeyFile *map)
+{
+	zmq_state_t state;
+	g_autoptr(GError) error = NULL;
+	g_autofree gchar *path = g_key_file_get_string(map, "zmq", "socket", &error);
+	config_check_key(error);
+	state.pull = zsock_new_pull(path);
+	if (state.pull == NULL) {
+		err(7,"Unable to create ZMQ pull");
+	}
+
+	// Create poller from given puller
+	state.poller = zpoller_new(state.pull, NULL);
+	if (state.poller == NULL) {
+		err(7,"Unable to creat ZMQ poller");
+	}
+
+	if (regcomp(&state.re_relay, "^RELAY ([1-4]) (ON|OFF)$", REG_EXTENDED | REG_ICASE)) {
+		errx(1, "Unable to compile regex");
+	}
+
+	return state;
 }
 
 static bool do_zmq_magic(zmq_state_t *state, int left)
