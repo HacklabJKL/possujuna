@@ -50,16 +50,22 @@ int main( int argc, char *argv[])
 		err(5, "Unable to set slave");
 	}
 
+	struct timespec loop_start = time_get_monotonic();
+	int target = 0;
+	
 	// Ready to communicate.
 	for(;;){
-		struct timespec loop_start = time_get_monotonic();
+		// Be punctual. Try to be at this point every
+		// query_delay milliseconds.
+		target += query_delay;
 
 		while (true) {
 			// Calculate how long we will spend in this
-			// ZMQ part. When the time runs out, back to routine tasks.
+			// ZMQ part. When the time runs out, back to
+			// routine tasks.
 			struct timespec now = time_get_monotonic();
 			int elapsed_ms = time_nanodiff(&now, &loop_start) / 1000000;
-			int left = query_delay - elapsed_ms;
+			int left = target - elapsed_ms;
 
 			zsock_t *match = (zsock_t *)zpoller_wait(zmq_poller, left < 0 ? 0 : left);
 
