@@ -24,7 +24,7 @@ typedef struct {
 } zmq_state_t;
 
 static zmq_state_t zmq_state_init(GKeyFile *map);
-static bool do_zmq_magic(zmq_state_t *state, int left);
+static bool do_zmq_magic(zmq_state_t *state, modbus_state_t *modbus_state, int left);
 static bool do_modbus_magic(modbus_state_t *state);
 static void zmq_state_free(zmq_state_t *state);
 
@@ -32,7 +32,7 @@ G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(zmq_state_t, zmq_state_free);
 
 static const int query_delay = 1000;
 
-int main( int argc, char *argv[])
+int main(int argc, char *argv[])
 {
 	g_autoptr(GKeyFile) map = g_key_file_new();
 
@@ -68,7 +68,7 @@ int main( int argc, char *argv[])
 			if (left < 0) break;
 
 			// Call ZMQ part with the timeout value.
-			if (do_zmq_magic(&zmq_state, left) == false) {
+			if (do_zmq_magic(&zmq_state, &modbus_state, left) == false) {
 				return 10;
 			}
 		}
@@ -105,7 +105,7 @@ static zmq_state_t zmq_state_init(GKeyFile *map)
 	return state;
 }
 
-static bool do_zmq_magic(zmq_state_t *state, int left)
+static bool do_zmq_magic(zmq_state_t *state, modbus_state_t *modbus_state, int left)
 {
 	zsock_t *match = (zsock_t *)zpoller_wait(state->poller, left);
 
@@ -133,6 +133,8 @@ static bool do_zmq_magic(zmq_state_t *state, int left)
 		bool mode = pmatch[2].rm_eo == pmatch[2].rm_so+2;
 
 		printf("Releohjaus. Rele %d -> %d\n", relay, mode);
+		modbus_state_ensure_baud_rate(modbus_state, 9600);
+		// Write to relays
 	}
 
 	zstr_free (&msg);
@@ -151,6 +153,7 @@ static bool do_modbus_magic(modbus_state_t *state)
 	uint16_t dest[NB_REGS];
 	int ret;
 
+	modbus_state_ensure_baud_rate(state, 115200);
 	ret = modbus_read_input_registers(state->ctx, 0x3104, NB_REGS, dest);
 	if (ret < 0){
 		state->n_errors++;
