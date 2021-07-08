@@ -16,12 +16,19 @@
 
 #define NB_REGS 2
 
+typedef struct {
+	zpoller_t *poller;
+	zsock_t *pull;
+} zmq_state_t;
+
+static bool do_zmq_magic(zmq_state_t *state, int left);
+
 static const int query_delay = 1000;
 
 int main( int argc, char *argv[])
 {
 	g_autoptr(GKeyFile) map = g_key_file_new();
-	zsock_t *zmq_pull;
+	zmq_state_t zmq_state;
 	int n_errors = 0;
 	int cumulative_errors = 0;
 	int read_counter = 0;
@@ -37,11 +44,13 @@ int main( int argc, char *argv[])
 		g_autoptr(GError) error = NULL;
 		g_autofree gchar *path = g_key_file_get_string(map, "zmq", "socket", &error);
 		config_check_key(error);
-		zmq_pull = zsock_new_pull(path);
-		if (zmq_pull == NULL) err(7,"jooh");
+		zmq_state.pull = zsock_new_pull(path);
+		if (zmq_state.pull == NULL) err(7,"jooh");
+
+		// Create poller from given puller
+		zmq_state.poller = zpoller_new(zmq_state.pull, NULL);
+		if (zmq_state.poller == NULL) err(7,"juuh");
 	}
-	zpoller_t *zmq_poller = zpoller_new(zmq_pull, NULL);
-	if (zmq_poller == NULL) err(7,"juuh");
 	
 	// Serial port settings.
 	modbus_t *ctx = bustools_initialize(map, "serial");
@@ -60,31 +69,17 @@ int main( int argc, char *argv[])
 		target += query_delay;
 
 		while (true) {
-			// Calculate how long we will spend in this
-			// ZMQ part. When the time runs out, back to
-			// routine tasks.
+			// Calculate how long we need to spend here
+			// before proceeding to routine tasks.
 			struct timespec now = time_get_monotonic();
 			int elapsed_ms = time_nanodiff(&now, &loop_start) / 1000000;
 			int left = target - elapsed_ms;
+			if (left < 0) break;
 
-			zsock_t *match = (zsock_t *)zpoller_wait(zmq_poller, left < 0 ? 0 : left);
-
-			// If socket closed, just quit.
-			if (zpoller_terminated(zmq_poller)) {
-				zpoller_destroy(&zmq_poller);
-				zsock_destroy(&zmq_pull);
-				return 0;
+			// Call ZMQ part with the timeout value.
+			if (do_zmq_magic(&zmq_state, left) == false) {
+				goto fail;
 			}
-
-			// When we encounter timeout, fallback to the routine.
-			if (match == NULL) break;
-			char *string = zstr_recv(match);
-			if (string == NULL) {
-				printf("PASKAA\n");
-				continue;
-			}
-			puts(string);
-			zstr_free (&string);
 		}
 
 		// Scheduled
@@ -110,7 +105,34 @@ int main( int argc, char *argv[])
 		// sleep(1);
 	}
 
+fail:
+	zpoller_destroy(&zmq_state.poller);
+	zsock_destroy(&zmq_state.pull);
+
 	modbus_close(ctx);
 	modbus_free(ctx);
 
+}
+
+static bool do_zmq_magic(zmq_state_t *state, int left)
+{
+	zsock_t *match = (zsock_t *)zpoller_wait(state->poller, left);
+
+	// If socket closed, just quit.
+	if (zpoller_terminated(state->poller)) {
+		return false;
+	}
+
+	// When we encounter timeout, fallback to the routine.
+	if (match == NULL) {
+		return true;;
+	}
+	char *string = zstr_recv(match);
+	if (string == NULL) {
+		// Unexpected input
+		return false;
+	}
+	puts(string);
+	zstr_free (&string);
+	return true;
 }
