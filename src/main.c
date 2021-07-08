@@ -21,7 +21,15 @@ typedef struct {
 	zsock_t *pull;
 } zmq_state_t;
 
+typedef struct {
+	modbus_t *ctx;
+	int n_errors;
+	int cumulative_errors;
+	int read_counter;
+} modbus_state_t;
+
 static bool do_zmq_magic(zmq_state_t *state, int left);
+static bool do_modbus_magic(modbus_state_t *state);
 
 static const int query_delay = 1000;
 
@@ -29,11 +37,6 @@ int main( int argc, char *argv[])
 {
 	g_autoptr(GKeyFile) map = g_key_file_new();
 	zmq_state_t zmq_state;
-	int n_errors = 0;
-	int cumulative_errors = 0;
-	int read_counter = 0;
-	int ret;
-	uint16_t dest [NB_REGS];
 
 	// Parse command line and config. If anything fails, the
 	// program is terminated.
@@ -53,9 +56,10 @@ int main( int argc, char *argv[])
 	}
 	
 	// Serial port settings.
-	modbus_t *ctx = bustools_initialize(map, "serial");
+	modbus_state_t modbus_state = {NULL, 0, 0, 0};
+	modbus_state.ctx = bustools_initialize(map, "serial");
 
-	if (modbus_set_slave(ctx, 2)) {
+	if (modbus_set_slave(modbus_state.ctx, 2)) {
 		err(5, "Unable to set slave");
 	}
 
@@ -63,8 +67,8 @@ int main( int argc, char *argv[])
 	int target = 0;
 	
 	// Ready to communicate.
-	for(;;){
-		// Be punctual. Try to be at this point every
+	while (true) {
+		// Be punctual. Try to be at do_modbus_magic() every
 		// query_delay milliseconds.
 		target += query_delay;
 
@@ -85,32 +89,17 @@ int main( int argc, char *argv[])
 		// Scheduled
 		printf("Back to routine modbus\n");
 
-		ret = modbus_read_input_registers(ctx, 0x3104, NB_REGS, dest);
-		if(ret < 0){
-			n_errors++;
-			cumulative_errors++;
-			if(n_errors >= 3){
-				perror("modbus_read_regs error\n");
-				return -1;
-			}
-		}else{
-			n_errors = 0;
+		if ( do_modbus_magic(&modbus_state) == false) {
+			goto fail;
 		}
-		read_counter++;
-		printf("Read counter = %d\n",read_counter);
-		printf("Error counter = %d\n",n_errors);
-		printf("Cumulative Error counter = %d\n",cumulative_errors);
-		printf("Battery Voltage = %d\n",dest[0]);
-		printf("Battery Charging current = %d\n",dest[1]);
-		// sleep(1);
 	}
 
 fail:
 	zpoller_destroy(&zmq_state.poller);
 	zsock_destroy(&zmq_state.pull);
 
-	modbus_close(ctx);
-	modbus_free(ctx);
+	modbus_close(modbus_state.ctx);
+	modbus_free(modbus_state.ctx);
 
 }
 
@@ -123,7 +112,7 @@ static bool do_zmq_magic(zmq_state_t *state, int left)
 		return false;
 	}
 
-	// When we encounter timeout, fallback to the routine.
+	// Stop when timeout.
 	if (match == NULL) {
 		return true;;
 	}
@@ -134,5 +123,30 @@ static bool do_zmq_magic(zmq_state_t *state, int left)
 	}
 	puts(string);
 	zstr_free (&string);
+	return true;
+}
+
+static bool do_modbus_magic(modbus_state_t *state)
+{
+	uint16_t dest[NB_REGS];
+	int ret;
+
+	ret = modbus_read_input_registers(state->ctx, 0x3104, NB_REGS, dest);
+	if (ret < 0){
+		state->n_errors++;
+		state->cumulative_errors++;
+		if (state->n_errors >= 3){
+			perror("modbus_read_regs error\n");
+			return false;
+		}
+	} else {
+		state->n_errors = 0;
+	}
+	state->read_counter++;
+	printf("Read counter = %d\n", state->read_counter);
+	printf("Error counter = %d\n", state->n_errors);
+	printf("Cumulative Error counter = %d\n", state->cumulative_errors);
+	printf("Battery Voltage = %d\n", dest[0]);
+	printf("Battery Charging current = %d\n", dest[1]);
 	return true;
 }
