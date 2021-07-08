@@ -138,7 +138,12 @@ static bool do_zmq_magic(zmq_state_t *state, modbus_state_t *modbus_state, int l
 
 		printf("Releohjaus. Rele %d -> %d\n", relay, mode);
 		modbus_state_ensure_baud_rate(modbus_state, state->relay_baud);
-		// Write to relay at state->relay->busid
+
+		if (modbus_set_slave(modbus_state->ctx, state->relay_busid)) {
+			err(5, "Unable to set slave");
+		}
+
+		// Write to relay
 	}
 
 	zstr_free (&msg);
