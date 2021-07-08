@@ -12,8 +12,11 @@
 #include <asm/ioctls.h>
 #include "config.h"
 #include "bustools.h"
+#include "time.h"
 
 #define NB_REGS 2
+
+static const int query_delay = 1000;
 
 int main( int argc, char *argv[])
 {
@@ -49,12 +52,16 @@ int main( int argc, char *argv[])
 
 	// Ready to communicate.
 	for(;;){
-		// Todo calculate cumulative shit
-		bool first_msg = true;
-		
+		struct timespec loop_start = time_get_monotonic();
+
 		while (true) {
-			zsock_t *match = (zsock_t *)zpoller_wait(zmq_poller, first_msg ? 1000 : 0);
-			first_msg = false;
+			// Calculate how long we will spend in this
+			// ZMQ part. When the time runs out, back to routine tasks.
+			struct timespec now = time_get_monotonic();
+			int elapsed_ms = time_nanodiff(&now, &loop_start) / 1000000;
+			int left = query_delay - elapsed_ms;
+
+			zsock_t *match = (zsock_t *)zpoller_wait(zmq_poller, left < 0 ? 0 : left);
 
 			// If socket closed, just quit.
 			if (zpoller_terminated(zmq_poller)) {
