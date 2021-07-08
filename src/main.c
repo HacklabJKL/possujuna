@@ -21,6 +21,8 @@ typedef struct {
 	zpoller_t *poller;
 	zsock_t *pull;
 	regex_t re_relay;
+	int relay_busid;
+	int relay_baud;
 } zmq_state_t;
 
 static zmq_state_t zmq_state_init(GKeyFile *map);
@@ -45,10 +47,6 @@ int main(int argc, char *argv[])
 	
 	// Initialize MODBUS handler.
 	g_auto(modbus_state_t) modbus_state = modbus_state_init(map);
-
-	if (modbus_set_slave(modbus_state.ctx, 2)) {
-		err(5, "Unable to set slave");
-	}
 
 	struct timespec loop_start = time_get_monotonic();
 	int target = 0;
@@ -102,6 +100,12 @@ static zmq_state_t zmq_state_init(GKeyFile *map)
 		errx(1, "Unable to compile regex");
 	}
 
+	// Relay settings. Move to somewhere out here
+	state.relay_busid = g_key_file_get_integer(map, "relay", "busid", &error);
+	config_check_key(error);
+	state.relay_baud = g_key_file_get_integer(map, "relay", "baud", &error);
+	config_check_key(error);
+
 	return state;
 }
 
@@ -133,8 +137,8 @@ static bool do_zmq_magic(zmq_state_t *state, modbus_state_t *modbus_state, int l
 		bool mode = pmatch[2].rm_eo == pmatch[2].rm_so+2;
 
 		printf("Releohjaus. Rele %d -> %d\n", relay, mode);
-		modbus_state_ensure_baud_rate(modbus_state, 9600);
-		// Write to relays
+		modbus_state_ensure_baud_rate(modbus_state, state->relay_baud);
+		// Write to relay at state->relay->busid
 	}
 
 	zstr_free (&msg);
@@ -153,7 +157,12 @@ static bool do_modbus_magic(modbus_state_t *state)
 	uint16_t dest[NB_REGS];
 	int ret;
 
-	modbus_state_ensure_baud_rate(state, 115200);
+	modbus_state_ensure_baud_rate(state, state->tracer_baud);
+
+	if (modbus_set_slave(state->ctx, state->tracer_busid)) {
+		err(5, "Unable to set slave");
+	}
+
 	ret = modbus_read_input_registers(state->ctx, 0x3104, NB_REGS, dest);
 	if (ret < 0){
 		state->n_errors++;
