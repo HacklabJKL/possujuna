@@ -10,6 +10,7 @@
 #include <sys/ioctl.h>
 #include <linux/serial.h>
 #include <asm/ioctls.h>
+#include <regex.h>
 #include "config.h"
 #include "bustools.h"
 #include "time.h"
@@ -19,6 +20,7 @@
 typedef struct {
 	zpoller_t *poller;
 	zsock_t *pull;
+	regex_t re_relay;
 } zmq_state_t;
 
 typedef struct {
@@ -53,11 +55,19 @@ int main( int argc, char *argv[])
 		g_autofree gchar *path = g_key_file_get_string(map, "zmq", "socket", &error);
 		config_check_key(error);
 		zmq_state.pull = zsock_new_pull(path);
-		if (zmq_state.pull == NULL) err(7,"jooh");
+		if (zmq_state.pull == NULL) {
+			err(7,"Unable to create ZMQ pull");
+		}
 
 		// Create poller from given puller
 		zmq_state.poller = zpoller_new(zmq_state.pull, NULL);
-		if (zmq_state.poller == NULL) err(7,"juuh");
+		if (zmq_state.poller == NULL) {
+			err(7,"Unable to creat ZMQ poller");
+		}
+
+		if (regcomp(&zmq_state.re_relay, "^RELAY ([1-4]) (ON|OFF)$", REG_EXTENDED | REG_ICASE)) {
+			errx(1, "Unable to compile regex");
+		}
 	}
 	
 	// Serial port settings.
@@ -113,13 +123,24 @@ static bool do_zmq_magic(zmq_state_t *state, int left)
 	if (match == NULL) {
 		return true;;
 	}
-	char *string = zstr_recv(match);
-	if (string == NULL) {
+	char *msg = zstr_recv(match);
+	if (msg == NULL) {
 		// Unexpected input
 		return false;
 	}
-	puts(string);
-	zstr_free (&string);
+	regmatch_t pmatch[3];
+	if (regexec(&state->re_relay, msg, 3, pmatch, 0)) {
+		puts("No match");
+	} else {
+		// Match. Check which relay
+		int relay = msg[pmatch[1].rm_so] - '0';
+		// Quick hack to get ON/OFF. ON has length of 2
+		bool mode = pmatch[2].rm_eo == pmatch[2].rm_so+2;
+
+		printf("Releohjaus. Rele %d -> %d\n", relay, mode);
+	}
+
+	zstr_free (&msg);
 	return true;
 }
 
@@ -127,6 +148,7 @@ static void zmq_state_free(zmq_state_t *state)
 {
 	zpoller_destroy(&state->poller);
 	zsock_destroy(&state->pull);
+	regfree(&state->re_relay);
 }
 
 static bool do_modbus_magic(modbus_state_t *state)
