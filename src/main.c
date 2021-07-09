@@ -29,9 +29,6 @@ int main(int argc, char *argv[])
 	// program is terminated.
 	config_parse_all(conf, &argc, &argv);
 
-	// Initialize message queue
-	g_auto(zmq_state_t) zmq_state = zmq_state_init(conf);
-	
 	// Initialize MODBUS handler.
 	g_auto(modbus_state_t) modbus_state = modbus_state_init(conf);
 
@@ -39,7 +36,10 @@ int main(int argc, char *argv[])
 	g_autoptr(GError) error = NULL;
 	const int query_interval = 1000 * g_key_file_get_integer(conf, "periodic", "interval", &error);
 	config_check_key(error);
-	
+
+	// Initialize message queue
+	g_auto(zmq_state_t) zmq_state = zmq_state_init(conf);
+
 	struct timespec loop_start = time_get_monotonic();
 	int target = 0;
 
