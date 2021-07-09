@@ -13,22 +13,13 @@
 #include <regex.h>
 #include "config.h"
 #include "modbus_state.h"
+#include "zmq_state.h"
 #include "time.h"
 
 #define NB_REGS 2
 
-typedef struct {
-	zpoller_t *poller;
-	zsock_t *pull;
-	regex_t re_relay;
-} zmq_state_t;
-
-static zmq_state_t zmq_state_init(GKeyFile *conf);
 static bool handle_query(GKeyFile *conf, zmq_state_t *state, modbus_state_t *modbus_state, int left);
 static bool handle_periodic(GKeyFile *conf, modbus_state_t *state);
-static void zmq_state_free(zmq_state_t *state);
-
-G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(zmq_state_t, zmq_state_free);
 
 static const int query_delay = 1000;
 
@@ -77,30 +68,6 @@ int main(int argc, char *argv[])
 	}
 }
 
-static zmq_state_t zmq_state_init(GKeyFile *conf)
-{
-	zmq_state_t state;
-	g_autoptr(GError) error = NULL;
-	g_autofree gchar *path = g_key_file_get_string(conf, "zmq", "socket", &error);
-	config_check_key(error);
-	state.pull = zsock_new_pull(path);
-	if (state.pull == NULL) {
-		err(7,"Unable to create ZMQ pull");
-	}
-
-	// Create poller from given puller
-	state.poller = zpoller_new(state.pull, NULL);
-	if (state.poller == NULL) {
-		err(7,"Unable to creat ZMQ poller");
-	}
-
-	if (regcomp(&state.re_relay, "^RELAY ([1-4]) (ON|OFF)$", REG_EXTENDED | REG_ICASE)) {
-		errx(1, "Unable to compile regex");
-	}
-
-	return state;
-}
-
 static bool handle_query(GKeyFile *conf, zmq_state_t *state, modbus_state_t *modbus_state, int left)
 {
 	zsock_t *match = (zsock_t *)zpoller_wait(state->poller, left);
@@ -147,13 +114,6 @@ static bool handle_query(GKeyFile *conf, zmq_state_t *state, modbus_state_t *mod
 
 	zstr_free (&msg);
 	return true;
-}
-
-static void zmq_state_free(zmq_state_t *state)
-{
-	zpoller_destroy(&state->poller);
-	zsock_destroy(&state->pull);
-	regfree(&state->re_relay);
 }
 
 static bool handle_periodic(GKeyFile *conf, modbus_state_t *state)
