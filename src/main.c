@@ -42,10 +42,6 @@ int main(int argc, char *argv[])
 
 	// Ready to communicate.
 	while (true) {
-		// Be punctual. Try to be at handle_periodic() every
-		// query_delay milliseconds.
-		target += query_delay;
-
 		while (true) {
 			// Calculate how long we need to spend here
 			// before proceeding to routine tasks.
@@ -60,8 +56,11 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		printf("Periodic run\n");
+		// Be punctual. Try to be here every query_delay
+		// milliseconds.
+		target += query_delay;
 
+		printf("Periodic run\n");
 		if ( handle_periodic(conf, &modbus_state) == false) {
 			return 10;
 		}
