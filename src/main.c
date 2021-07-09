@@ -87,7 +87,7 @@ static bool handle_query(GKeyFile *conf, zmq_state_t *zmq, modbus_state_t *modbu
 	}
 	regmatch_t pmatch[3];
 	if (regexec(&zmq->re_relay, msg, 3, pmatch, 0)) {
-		puts("No match");
+		warnx("Invalid ZMQ message: %s", msg);
 	} else {
 		// Match. Check which relay
 		int relay = msg[pmatch[1].rm_so] - '0';
@@ -143,8 +143,8 @@ static bool handle_periodic(GKeyFile *conf, modbus_state_t *modbus)
 	if (ret < 0){
 		modbus->n_errors++;
 		modbus->cumulative_errors++;
+		warn("modbus_read_regs error");
 		if (modbus->n_errors >= 3){
-			perror("modbus_read_regs error\n");
 			return false;
 		}
 	} else {
