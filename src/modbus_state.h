@@ -8,8 +8,6 @@ typedef struct {
 	int n_errors;
 	int cumulative_errors;
 	int read_counter;
-	int tracer_busid;
-	int tracer_baud;
 } modbus_state_t;
 
 // Initialize libmodbus context based on the parameters in the

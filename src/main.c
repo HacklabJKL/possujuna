@@ -21,13 +21,11 @@ typedef struct {
 	zpoller_t *poller;
 	zsock_t *pull;
 	regex_t re_relay;
-	int relay_busid;
-	int relay_baud;
 } zmq_state_t;
 
 static zmq_state_t zmq_state_init(GKeyFile *map);
-static bool do_zmq_magic(zmq_state_t *state, modbus_state_t *modbus_state, int left);
-static bool do_modbus_magic(modbus_state_t *state);
+static bool do_zmq_magic(GKeyFile *conf, zmq_state_t *state, modbus_state_t *modbus_state, int left);
+static bool do_modbus_magic(GKeyFile *conf, modbus_state_t *state);
 static void zmq_state_free(zmq_state_t *state);
 
 G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(zmq_state_t, zmq_state_free);
@@ -66,14 +64,14 @@ int main(int argc, char *argv[])
 			if (left < 0) break;
 
 			// Call ZMQ part with the timeout value.
-			if (do_zmq_magic(&zmq_state, &modbus_state, left) == false) {
+			if (do_zmq_magic(map, &zmq_state, &modbus_state, left) == false) {
 				return 10;
 			}
 		}
 
 		printf("Back to routine modbus\n");
 
-		if ( do_modbus_magic(&modbus_state) == false) {
+		if ( do_modbus_magic(map, &modbus_state) == false) {
 			return 10;
 		}
 	}
@@ -100,16 +98,10 @@ static zmq_state_t zmq_state_init(GKeyFile *map)
 		errx(1, "Unable to compile regex");
 	}
 
-	// Relay settings. Move to somewhere out here
-	state.relay_busid = g_key_file_get_integer(map, "relay", "busid", &error);
-	config_check_key(error);
-	state.relay_baud = g_key_file_get_integer(map, "relay", "baud", &error);
-	config_check_key(error);
-
 	return state;
 }
 
-static bool do_zmq_magic(zmq_state_t *state, modbus_state_t *modbus_state, int left)
+static bool do_zmq_magic(GKeyFile *conf, zmq_state_t *state, modbus_state_t *modbus_state, int left)
 {
 	zsock_t *match = (zsock_t *)zpoller_wait(state->poller, left);
 
@@ -136,10 +128,17 @@ static bool do_zmq_magic(zmq_state_t *state, modbus_state_t *modbus_state, int l
 		// Quick hack to get ON/OFF. ON has length of 2
 		bool mode = pmatch[2].rm_eo == pmatch[2].rm_so+2;
 
+		// Ok, we need to control. Dig out the configuration.
+		g_autoptr(GError) error = NULL;
+		gint busid = g_key_file_get_integer(conf, "relay", "busid", &error);
+		config_check_key(error);
+		gint baud = g_key_file_get_integer(conf, "relay", "baud", &error);
+		config_check_key(error);
+		
 		printf("Releohjaus. Rele %d -> %d\n", relay, mode);
-		modbus_state_ensure_baud_rate(modbus_state, state->relay_baud);
+		modbus_state_ensure_baud_rate(modbus_state, baud);
 
-		if (modbus_set_slave(modbus_state->ctx, state->relay_busid)) {
+		if (modbus_set_slave(modbus_state->ctx, busid)) {
 			err(5, "Unable to set slave");
 		}
 
@@ -157,14 +156,21 @@ static void zmq_state_free(zmq_state_t *state)
 	regfree(&state->re_relay);
 }
 
-static bool do_modbus_magic(modbus_state_t *state)
+static bool do_modbus_magic(GKeyFile *conf, modbus_state_t *state)
 {
 	uint16_t dest[NB_REGS];
 	int ret;
 
-	modbus_state_ensure_baud_rate(state, state->tracer_baud);
+	// Tracer settings.
+	g_autoptr(GError) error = NULL;
+	gint busid = g_key_file_get_integer(conf, "tracer", "busid", &error);
+	config_check_key(error);
+	gint baud = g_key_file_get_integer(conf, "tracer", "baud", &error);
+	config_check_key(error);
 
-	if (modbus_set_slave(state->ctx, state->tracer_busid)) {
+	modbus_state_ensure_baud_rate(state, baud);
+
+	if (modbus_set_slave(state->ctx, busid)) {
 		err(5, "Unable to set slave");
 	}
 

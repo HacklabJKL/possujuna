@@ -19,12 +19,6 @@ modbus_state_t modbus_state_init(GKeyFile *map)
 	gboolean rs485 = g_key_file_get_boolean(map, group, "rs485", &error);
 	config_check_key(error);
 
-	// Tracer settings. Move to somewhere out here
-	state.tracer_busid = g_key_file_get_integer(map, "tracer", "busid", &error);
-	config_check_key(error);
-	state.tracer_baud = g_key_file_get_integer(map, "tracer", "baud", &error);
-	config_check_key(error);
-
 	// Open file descriptor just for baud rate hacking
 	state.baud_fd = open(uart_path, O_RDONLY);
 	if (state.baud_fd == -1) {
