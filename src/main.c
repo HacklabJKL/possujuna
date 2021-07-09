@@ -67,12 +67,12 @@ int main(int argc, char *argv[])
 	}
 }
 
-static bool handle_query(GKeyFile *conf, zmq_state_t *state, modbus_state_t *modbus_state, int left)
+static bool handle_query(GKeyFile *conf, zmq_state_t *zmq, modbus_state_t *modbus, int left)
 {
-	zsock_t *match = (zsock_t *)zpoller_wait(state->poller, left);
+	zsock_t *match = (zsock_t *)zpoller_wait(zmq->poller, left);
 
 	// If socket closed, just quit.
-	if (zpoller_terminated(state->poller)) {
+	if (zpoller_terminated(zmq->poller)) {
 		return false;
 	}
 
@@ -86,7 +86,7 @@ static bool handle_query(GKeyFile *conf, zmq_state_t *state, modbus_state_t *mod
 		return false;
 	}
 	regmatch_t pmatch[3];
-	if (regexec(&state->re_relay, msg, 3, pmatch, 0)) {
+	if (regexec(&zmq->re_relay, msg, 3, pmatch, 0)) {
 		puts("No match");
 	} else {
 		// Match. Check which relay
@@ -102,16 +102,16 @@ static bool handle_query(GKeyFile *conf, zmq_state_t *state, modbus_state_t *mod
 		config_check_key(error);
 
 		printf("Releohjaus. Rele %d -> %d\n", relay, mode);
-		modbus_state_ensure_baud_rate(modbus_state, baud);
+		modbus_state_ensure_baud_rate(modbus, baud);
 
-		if (modbus_set_slave(modbus_state->ctx, busid)) {
+		if (modbus_set_slave(modbus->ctx, busid)) {
 			err(5, "Unable to set slave");
 		}
 
 		// This relay requires little-endian 1 or 2 to be
 		// written using Modbus function code 0x06 (preset
 		// single register). China export.
-		if (modbus_write_register(modbus_state->ctx, relay, mode ? 0x0100 : 0x0200) != 1) {
+		if (modbus_write_register(modbus->ctx, relay, mode ? 0x0100 : 0x0200) != 1) {
 			// TODO retry
 			warn("Unable to write to relay");
 		}
@@ -121,7 +121,7 @@ static bool handle_query(GKeyFile *conf, zmq_state_t *state, modbus_state_t *mod
 	return true;
 }
 
-static bool handle_periodic(GKeyFile *conf, modbus_state_t *state)
+static bool handle_periodic(GKeyFile *conf, modbus_state_t *modbus)
 {
 	uint16_t dest[NB_REGS];
 	int ret;
@@ -133,27 +133,27 @@ static bool handle_periodic(GKeyFile *conf, modbus_state_t *state)
 	gint baud = g_key_file_get_integer(conf, "tracer", "baud", &error);
 	config_check_key(error);
 
-	modbus_state_ensure_baud_rate(state, baud);
+	modbus_state_ensure_baud_rate(modbus, baud);
 
-	if (modbus_set_slave(state->ctx, busid)) {
+	if (modbus_set_slave(modbus->ctx, busid)) {
 		err(5, "Unable to set slave");
 	}
 
-	ret = modbus_read_input_registers(state->ctx, 0x3104, NB_REGS, dest);
+	ret = modbus_read_input_registers(modbus->ctx, 0x3104, NB_REGS, dest);
 	if (ret < 0){
-		state->n_errors++;
-		state->cumulative_errors++;
-		if (state->n_errors >= 3){
+		modbus->n_errors++;
+		modbus->cumulative_errors++;
+		if (modbus->n_errors >= 3){
 			perror("modbus_read_regs error\n");
 			return false;
 		}
 	} else {
-		state->n_errors = 0;
+		modbus->n_errors = 0;
 	}
-	state->read_counter++;
-	printf("Read counter = %d\n", state->read_counter);
-	printf("Error counter = %d\n", state->n_errors);
-	printf("Cumulative Error counter = %d\n", state->cumulative_errors);
+	modbus->read_counter++;
+	printf("Read counter = %d\n", modbus->read_counter);
+	printf("Error counter = %d\n", modbus->n_errors);
+	printf("Cumulative Error counter = %d\n", modbus->cumulative_errors);
 	printf("Battery Voltage = %d\n", dest[0]);
 	printf("Battery Charging current = %d\n", dest[1]);
 	return true;
