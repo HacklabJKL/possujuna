@@ -6,17 +6,17 @@
 #include "modbus_state.h"
 #include "baudhack.h"
 
-modbus_state_t modbus_state_init(GKeyFile *map)
+modbus_state_t modbus_state_init(GKeyFile *conf)
 {
 	const char *group = "serial";
 	modbus_state_t state = {NULL, 0, 0, 0, 0, 0};
 
 	// Get serial parameters from the configuration file
 	g_autoptr(GError) error = NULL;
-	g_autofree gchar *uart_path = g_key_file_get_string(map, group, "port", &error);
+	g_autofree gchar *uart_path = g_key_file_get_string(conf, group, "port", &error);
 	config_check_key(error);
 	state.current_baud = 9600; // Set later
-	gboolean rs485 = g_key_file_get_boolean(map, group, "rs485", &error);
+	gboolean rs485 = g_key_file_get_boolean(conf, group, "rs485", &error);
 	config_check_key(error);
 
 	// Open file descriptor just for baud rate hacking

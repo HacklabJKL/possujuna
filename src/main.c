@@ -23,9 +23,9 @@ typedef struct {
 	regex_t re_relay;
 } zmq_state_t;
 
-static zmq_state_t zmq_state_init(GKeyFile *map);
-static bool do_zmq_magic(GKeyFile *conf, zmq_state_t *state, modbus_state_t *modbus_state, int left);
-static bool do_modbus_magic(GKeyFile *conf, modbus_state_t *state);
+static zmq_state_t zmq_state_init(GKeyFile *conf);
+static bool handle_query(GKeyFile *conf, zmq_state_t *state, modbus_state_t *modbus_state, int left);
+static bool handle_periodic(GKeyFile *conf, modbus_state_t *state);
 static void zmq_state_free(zmq_state_t *state);
 
 G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(zmq_state_t, zmq_state_free);
@@ -34,24 +34,24 @@ static const int query_delay = 1000;
 
 int main(int argc, char *argv[])
 {
-	g_autoptr(GKeyFile) map = g_key_file_new();
+	g_autoptr(GKeyFile) conf = g_key_file_new();
 
 	// Parse command line and config. If anything fails, the
 	// program is terminated.
-	config_parse_all(map, &argc, &argv);
+	config_parse_all(conf, &argc, &argv);
 
 	// Initialize message queue
-	g_auto(zmq_state_t) zmq_state = zmq_state_init(map);
+	g_auto(zmq_state_t) zmq_state = zmq_state_init(conf);
 	
 	// Initialize MODBUS handler.
-	g_auto(modbus_state_t) modbus_state = modbus_state_init(map);
+	g_auto(modbus_state_t) modbus_state = modbus_state_init(conf);
 
 	struct timespec loop_start = time_get_monotonic();
 	int target = 0;
 
 	// Ready to communicate.
 	while (true) {
-		// Be punctual. Try to be at do_modbus_magic() every
+		// Be punctual. Try to be at handle_periodic() every
 		// query_delay milliseconds.
 		target += query_delay;
 
@@ -64,24 +64,24 @@ int main(int argc, char *argv[])
 			if (left < 0) break;
 
 			// Call ZMQ part with the timeout value.
-			if (do_zmq_magic(map, &zmq_state, &modbus_state, left) == false) {
+			if (handle_query(conf, &zmq_state, &modbus_state, left) == false) {
 				return 10;
 			}
 		}
 
-		printf("Back to routine modbus\n");
+		printf("Periodic run\n");
 
-		if ( do_modbus_magic(map, &modbus_state) == false) {
+		if ( handle_periodic(conf, &modbus_state) == false) {
 			return 10;
 		}
 	}
 }
 
-static zmq_state_t zmq_state_init(GKeyFile *map)
+static zmq_state_t zmq_state_init(GKeyFile *conf)
 {
 	zmq_state_t state;
 	g_autoptr(GError) error = NULL;
-	g_autofree gchar *path = g_key_file_get_string(map, "zmq", "socket", &error);
+	g_autofree gchar *path = g_key_file_get_string(conf, "zmq", "socket", &error);
 	config_check_key(error);
 	state.pull = zsock_new_pull(path);
 	if (state.pull == NULL) {
@@ -101,7 +101,7 @@ static zmq_state_t zmq_state_init(GKeyFile *map)
 	return state;
 }
 
-static bool do_zmq_magic(GKeyFile *conf, zmq_state_t *state, modbus_state_t *modbus_state, int left)
+static bool handle_query(GKeyFile *conf, zmq_state_t *state, modbus_state_t *modbus_state, int left)
 {
 	zsock_t *match = (zsock_t *)zpoller_wait(state->poller, left);
 
@@ -156,7 +156,7 @@ static void zmq_state_free(zmq_state_t *state)
 	regfree(&state->re_relay);
 }
 
-static bool do_modbus_magic(GKeyFile *conf, modbus_state_t *state)
+static bool handle_periodic(GKeyFile *conf, modbus_state_t *state)
 {
 	uint16_t dest[NB_REGS];
 	int ret;
