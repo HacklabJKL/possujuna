@@ -21,8 +21,6 @@
 static bool handle_query(GKeyFile *conf, zmq_state_t *state, modbus_state_t *modbus_state, int left);
 static bool handle_periodic(GKeyFile *conf, modbus_state_t *state);
 
-static const int query_delay = 1000;
-
 int main(int argc, char *argv[])
 {
 	g_autoptr(GKeyFile) conf = g_key_file_new();
@@ -37,6 +35,11 @@ int main(int argc, char *argv[])
 	// Initialize MODBUS handler.
 	g_auto(modbus_state_t) modbus_state = modbus_state_init(conf);
 
+	// Query interval is configurable. Internally it's milliseconds.
+	g_autoptr(GError) error = NULL;
+	const int query_interval = 1000 * g_key_file_get_integer(conf, "periodic", "interval", &error);
+	config_check_key(error);
+	
 	struct timespec loop_start = time_get_monotonic();
 	int target = 0;
 
@@ -58,7 +61,7 @@ int main(int argc, char *argv[])
 
 		// Be punctual. Try to be here every query_delay
 		// milliseconds.
-		target += query_delay;
+		target += query_interval;
 
 		printf("Periodic run\n");
 		if ( handle_periodic(conf, &modbus_state) == false) {
