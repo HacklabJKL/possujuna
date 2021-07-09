@@ -100,7 +100,7 @@ static bool handle_query(GKeyFile *conf, zmq_state_t *state, modbus_state_t *mod
 		config_check_key(error);
 		gint baud = g_key_file_get_integer(conf, "relay", "baud", &error);
 		config_check_key(error);
-		
+
 		printf("Releohjaus. Rele %d -> %d\n", relay, mode);
 		modbus_state_ensure_baud_rate(modbus_state, baud);
 
@@ -108,7 +108,13 @@ static bool handle_query(GKeyFile *conf, zmq_state_t *state, modbus_state_t *mod
 			err(5, "Unable to set slave");
 		}
 
-		// Write to relay
+		// This relay requires little-endian 1 or 2 to be
+		// written using Modbus function code 0x06 (preset
+		// single register). China export.
+		if (modbus_write_register(modbus_state->ctx, relay, mode ? 0x0100 : 0x0200) != 1) {
+			// TODO retry
+			warn("Unable to write to relay");
+		}
 	}
 
 	zstr_free (&msg);
